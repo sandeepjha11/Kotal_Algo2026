@@ -36,7 +36,7 @@ def on_message(message):
     logger.info(f'Websocket: {message}')
 
 def login():
-    client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key)
+    client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key, consumer_secret=config.CS)
     login_response = client.totp_login(mobile_number=config.Mob, ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
     if 'Error Message' in login_response:
         logger.fatal(f"Login failed: {login_response['Error Message']}")
@@ -206,6 +206,10 @@ def place_order_from_signals():
         buy_sell = signal['buy_sell']
         sl = signal['sl']
 
+        if not isinstance(sl, (int, float)):
+            logger.error(f"Invalid SL value for strike {strike_price}. Please enter a valid number.")
+            continue
+
         tsym = get_trading_symbol(strike_price, option_type)
         if not tsym:
             logger.error(f"Could not find trading symbol for strike {strike_price} and option type {option_type}")
@@ -220,7 +224,7 @@ def place_order_from_signals():
             trade = read_trading_signals(all_trades=True)
             trade = [t for t in trade if t['row_index'] == row_index][0]
             # Update the trading sheet with the order status
-            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Placed", trade['entry_price'], sl, trade.get('mtm')])
+            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Placed", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
 
             for i in range(10):
                 sleep(1) # wait for order to get executed
@@ -232,11 +236,11 @@ def place_order_from_signals():
                         order = order.iloc[0]
                         if order['ordSt'] == 'complete':
                             entry_price = float(order['avgPrc'])
-                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Executed", entry_price, sl, trade.get('mtm')])
+                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Executed", entry_price, trade['exit_price'], sl, trade.get('mtm')])
                             placeSLOrder(neoOrderApi, order.to_dict(), sl)
                             break
                         elif order['ordSt'] == 'rejected':
-                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Rejected", trade['entry_price'], sl, trade.get('mtm')])
+                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Rejected", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
                             break
 
 
@@ -257,7 +261,7 @@ def update_mtm():
                 if not ltp.empty:
                     ltp = ltp.iloc[0]['ltp']
                     mtm = (ltp - trade['entry_price']) * int(position['flBuyQty']) if trade['buy_sell'] == 'B' else (trade['entry_price'] - ltp) * int(position['flSellQty'])
-                    update_trading_sheet(trade['row_index'], [trade['strike_price'], trade['option_type'], trade['buy_sell'], trade['status'], trade['entry_price'], trade.get('sl'), mtm])
+                    update_trading_sheet(trade['row_index'], [trade['strike_price'], trade['option_type'], trade['buy_sell'], trade['status'], trade['entry_price'], trade['exit_price'], trade.get('sl'), mtm])
 
 
 def placeSLOrder(neoOrderApi : KotakAPI, entryInfo:dict, sl:float):

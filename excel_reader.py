@@ -75,7 +75,9 @@ def read_trading_signals(all_trades=False):
                         "buy_sell": row[2],
                         "status": row[3],
                         "entry_price": row[4],
-                        "sl": row[5],
+                        "exit_price": row[5],
+                        "sl": row[6],
+                        "mtm": row[7],
                     })
         return signals
     except FileNotFoundError:
