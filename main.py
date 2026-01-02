@@ -12,6 +12,7 @@ from neo_api_client import NeoAPI
 from excel_reader import load_credentials_and_settings, read_trading_signals
 from excel_interface import update_option_chain, update_trading_sheet, create_excel_file
 import os
+import openpyxl
 warnings.filterwarnings('ignore')
 
 
@@ -174,9 +175,14 @@ def get_lot_size(trading_symbol):
         return int(instrument.iloc[0]['lLotSize'])
     return 0
 
-def update_option_chain_data():
+def update_option_chain_data(workbook):
     symbolOpt = config.TOKEN_MAP
-    spot_ltp = getQuotes([{'instrument_token' : config.SPOT_TOKEN , "exchange_segment": "NSE"}]).iloc[0]['ltp']
+    spot_quote = getQuotes([{'instrument_token' : config.SPOT_TOKEN , "exchange_segment": "NSE"}])
+    if spot_quote.empty or spot_quote.iloc[0]['ltp'] is None:
+        logger.warning("Could not fetch spot LTP. Skipping option chain update.")
+        return
+
+    spot_ltp = spot_quote.iloc[0]['ltp']
     atm_strike = round(spot_ltp / 50) * 50
 
     strike_range = 5
@@ -191,12 +197,14 @@ def update_option_chain_data():
     # format the data to be written to excel
     option_chain_data = []
     for index, row in quotedf.iterrows():
-        # extract strike price from trading symbol
-        strike_price = ''.join(filter(str.isdigit, row['pTrdSymbol']))
-        option_chain_data.append([strike_price, row['ltp'], row.get('open'), row.get('high'), row.get('low'), row.get('close'), row.get('volume')])
-    update_option_chain(option_chain_data)
+        # find the strike price from the TOKEN_MAP
+        instrument = config.TOKEN_MAP[config.TOKEN_MAP.pSymbol == row['pSymbol']]
+        if not instrument.empty:
+            strike_price = instrument.iloc[0]['pStrike']
+            option_chain_data.append([strike_price, row['ltp'], row.get('open'), row.get('high'), row.get('low'), row.get('close'), row.get('volume')])
+    update_option_chain(workbook, option_chain_data)
 
-def place_order_from_signals():
+def place_order_from_signals(workbook):
     neoOrderApi = KotakAPI(config.NEO_OBJ)
     signals = read_trading_signals()
     for signal in signals:
@@ -229,7 +237,7 @@ def place_order_from_signals():
             trade = read_trading_signals(all_trades=True)
             trade = [t for t in trade if t['row_index'] == row_index][0]
             # Update the trading sheet with the order status
-            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Placed", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
+            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Placed", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
 
             for i in range(10):
                 sleep(1) # wait for order to get executed
@@ -241,15 +249,15 @@ def place_order_from_signals():
                         order = order.iloc[0]
                         if order['ordSt'] == 'complete':
                             entry_price = float(order['avgPrc'])
-                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Executed", entry_price, trade['exit_price'], sl, trade.get('mtm')])
+                            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Executed", entry_price, trade['exit_price'], sl, trade.get('mtm')])
                             placeSLOrder(neoOrderApi, order.to_dict(), sl)
                             break
                         elif order['ordSt'] == 'rejected':
-                            update_trading_sheet(row_index, [strike_price, option_type, buy_sell, "Rejected", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
+                            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Rejected", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
                             break
 
 
-def update_mtm():
+def update_mtm(workbook):
     neoOrderApi = KotakAPI(config.NEO_OBJ)
     positions = neoOrderApi.getPosition()
     if not (positions and 'data' in positions):
@@ -266,7 +274,7 @@ def update_mtm():
                 if not ltp.empty:
                     ltp = ltp.iloc[0]['ltp']
                     mtm = (ltp - trade['entry_price']) * int(position['flBuyQty']) if trade['buy_sell'] == 'B' else (trade['entry_price'] - ltp) * int(position['flSellQty'])
-                    update_trading_sheet(trade['row_index'], [trade['strike_price'], trade['option_type'], trade['buy_sell'], trade['status'], trade['entry_price'], trade['exit_price'], trade.get('sl'), mtm])
+                    update_trading_sheet(workbook, trade['row_index'], [trade['strike_price'], trade['option_type'], trade['buy_sell'], trade['status'], trade['entry_price'], trade['exit_price'], trade.get('sl'), mtm])
 
 
 def placeSLOrder(neoOrderApi : KotakAPI, entryInfo:dict, sl:float):
@@ -319,7 +327,9 @@ if __name__ == '__main__':
     initializer()
 
     while True:
-        update_option_chain_data()
-        place_order_from_signals()
-        update_mtm()
+        workbook = openpyxl.load_workbook("trading_system.xlsx")
+        update_option_chain_data(workbook)
+        place_order_from_signals(workbook)
+        update_mtm(workbook)
+        workbook.save("trading_system.xlsx")
         sleep(5) # Update every 5 seconds

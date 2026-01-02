@@ -25,8 +25,7 @@ def create_excel_file():
 
     workbook.save("trading_system.xlsx")
 
-def update_option_chain(option_chain_data):
-    workbook = openpyxl.load_workbook("trading_system.xlsx")
+def update_option_chain(workbook, option_chain_data):
     option_chain_sheet = workbook["Option Chain"]
 
     # Clear existing data
@@ -38,16 +37,11 @@ def update_option_chain(option_chain_data):
     for option in option_chain_data:
         option_chain_sheet.append(option)
 
-    workbook.save("trading_system.xlsx")
-
-def update_trading_sheet(row_index, trade_data):
-    workbook = openpyxl.load_workbook("trading_system.xlsx")
+def update_trading_sheet(workbook, row_index, trade_data):
     trading_sheet = workbook["Trading"]
 
     for col_index, value in enumerate(trade_data, start=1):
         trading_sheet.cell(row=row_index, column=col_index, value=value)
-
-    workbook.save("trading_system.xlsx")
 
 if __name__ == "__main__":
     create_excel_file()
