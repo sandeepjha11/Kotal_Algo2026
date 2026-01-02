@@ -39,13 +39,15 @@ def login():
     client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key, consumer_secret=config.CS)
     mobile_number = str(config.Mob).replace("+91", "")
     login_response = client.totp_login(mobile_number=f"+91{mobile_number}", ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
+    logger.info(f"Login API Response: {login_response}")
     if 'Error Message' in login_response:
         logger.fatal(f"Login failed: {login_response['Error Message']}")
         exit()
 
     validation_response = client.totp_validate(mpin=config.MPIN)
-    if 'Error Message' in validation_response:
-        logger.fatal(f"MPIN validation failed: {validation_response['Error Message']}")
+    logger.info(f"Validation API Response: {validation_response}")
+    if 'sid' not in validation_response:
+        logger.fatal(f"MPIN validation failed: {validation_response.get('Error Message', 'Unknown error')}")
         exit()
 
     return client
