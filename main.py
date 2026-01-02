@@ -37,7 +37,8 @@ def on_message(message):
 
 def login():
     client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key, consumer_secret=config.CS)
-    login_response = client.totp_login(mobile_number=config.Mob, ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
+    mobile_number = str(config.Mob).replace("+91", "")
+    login_response = client.totp_login(mobile_number=f"+91{mobile_number}", ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
     if 'Error Message' in login_response:
         logger.fatal(f"Login failed: {login_response['Error Message']}")
         exit()
