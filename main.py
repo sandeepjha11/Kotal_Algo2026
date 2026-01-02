@@ -193,7 +193,9 @@ def update_option_chain_data():
     # format the data to be written to excel
     option_chain_data = []
     for index, row in quotedf.iterrows():
-        option_chain_data.append([row['pTrdSymbol'], row['ltp'], row.get('open'), row.get('high'), row.get('low'), row.get('close'), row.get('volume')])
+        # extract strike price from trading symbol
+        strike_price = ''.join(filter(str.isdigit, row['pTrdSymbol']))
+        option_chain_data.append([strike_price, row['ltp'], row.get('open'), row.get('high'), row.get('low'), row.get('close'), row.get('volume')])
     update_option_chain(option_chain_data)
 
 def place_order_from_signals():
