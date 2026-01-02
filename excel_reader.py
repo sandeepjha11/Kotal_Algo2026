@@ -1,6 +1,7 @@
 import openpyxl
 import config
 from logger import logger
+import datetime
 
 def load_credentials_and_settings():
     try:
@@ -35,13 +36,17 @@ def load_credentials_and_settings():
         except (ValueError, TypeError):
             logger.warning("Invalid 'SL Limit' value in Settings sheet. Please fill it out.")
 
-        if entry_time_str and 'HH' not in str(entry_time_str):
+        if isinstance(entry_time_str, datetime.time):
+            config.ENTRY_TIME = (entry_time_str.hour, entry_time_str.minute, entry_time_str.second)
+        elif entry_time_str and 'HH' not in str(entry_time_str):
             try:
                 config.ENTRY_TIME = tuple(map(int, str(entry_time_str).split(':')))
             except ValueError:
                 logger.error(f"Invalid Entry Time format: {entry_time_str}. Please use HH:MM:SS.")
 
-        if exit_time_str and 'HH' not in str(exit_time_str):
+        if isinstance(exit_time_str, datetime.time):
+            config.EXIT_TIME = (exit_time_str.hour, exit_time_str.minute, exit_time_str.second)
+        elif exit_time_str and 'HH' not in str(exit_time_str):
             try:
                 config.EXIT_TIME = tuple(map(int, str(exit_time_str).split(':')))
             except ValueError:

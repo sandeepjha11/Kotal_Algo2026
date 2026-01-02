@@ -36,12 +36,17 @@ def on_message(message):
     logger.info(f'Websocket: {message}')
 
 def login():
-
     client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key)
-    client.totp_login(mobile_number=config.Mob, ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
-    client.totp_validate(mpin=config.MPIN)
-    #logger.info(f'{sesRes}')
-    #threading.Thread(target = client.subscribe_to_orderfeed).start()
+    login_response = client.totp_login(mobile_number=config.Mob, ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
+    if 'Error Message' in login_response:
+        logger.fatal(f"Login failed: {login_response['Error Message']}")
+        exit()
+
+    validation_response = client.totp_validate(mpin=config.MPIN)
+    if 'Error Message' in validation_response:
+        logger.fatal(f"MPIN validation failed: {validation_response['Error Message']}")
+        exit()
+
     return client
 
 
@@ -49,6 +54,15 @@ def initializer():
     config.NEO_OBJ : NeoAPI  = login()
     cashUrl = config.NEO_OBJ.scrip_master(exchange_segment = "NSE")
     nfoUrl = config.NEO_OBJ.scrip_master(exchange_segment = "NFO")
+
+    if isinstance(cashUrl, dict) and 'Error Message' in cashUrl:
+        logger.fatal(f"Failed to get cash scrip master: {cashUrl['Error Message']}")
+        exit()
+
+    if isinstance(nfoUrl, dict) and 'Error Message' in nfoUrl:
+        logger.fatal(f"Failed to get NFO scrip master: {nfoUrl['Error Message']}")
+        exit()
+
     logger.info(f'{cashUrl} \n {nfoUrl}')
 
     nfodf = pd.read_csv(nfoUrl)
@@ -135,27 +149,6 @@ def getQuotes(instList):
     return Quotedf
 
 
-def getCEPESymbols(cePremium, pePremium):
-    symbolOpt = config.TOKEN_MAP
-    ceStrikedf = symbolOpt[symbolOpt.pOptionType == 'CE']
-    peStrikedf = symbolOpt[symbolOpt.pOptionType == 'PE']
-    lotSize = int(peStrikedf.iloc[0]['lLotSize'])
-    ceInstList = []
-    for i in ceStrikedf.index:
-        strikeInfo = ceStrikedf.loc[i]
-        ceInstList.append({'instrument_token' : strikeInfo['pSymbol'] , "exchange_segment": strikeInfo['pExchSeg']})
-    ceQuotedf = getQuotes(ceInstList)
-    ceStrike =  getNearStrike(ceQuotedf,cePremium)
-    logger.info(f'Selected Strike CE {ceStrike}')
-
-    peInstList = []
-    for i in peStrikedf.index:
-        strikeInfo = peStrikedf.loc[i]
-        peInstList.append({'instrument_token' : strikeInfo['pSymbol'] , "exchange_segment": strikeInfo['pExchSeg']})
-    peQuotedf = getQuotes(peInstList)
-    peStrike =  getNearStrike(peQuotedf,pePremium)
-    logger.info(f'Selected Strike PE {peStrike}')
-    return ceStrike , peStrike , lotSize
 
 def get_trading_symbol(strike_price, option_type):
     symbolOpt = config.TOKEN_MAP.copy()
