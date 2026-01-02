@@ -302,6 +302,13 @@ if __name__ == '__main__':
     if not os.path.exists("trading_system.xlsx"):
         create_excel_file()
     load_credentials_and_settings()
+
+    # Validate critical credentials
+    critical_credentials = ['consumer_key', 'CS', 'Mob', 'Pwd', 'MPIN', 'totp', 'ucc']
+    if any(not getattr(config, cred) for cred in critical_credentials):
+        logger.fatal("Critical credentials are not set. Please fill out the 'Credentials' sheet in trading_system.xlsx and restart the application.")
+        exit()
+
     startTime =  datetime.now(config.TIME_ZONE)
     closingTime = startTime.replace(hour=9, minute=15,second=0,microsecond=0)
     interval = max(0, (closingTime - startTime).total_seconds())

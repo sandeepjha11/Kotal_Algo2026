@@ -21,17 +21,31 @@ def load_credentials_and_settings():
         settings_sheet = workbook["Settings"]
         settings = list(settings_sheet.iter_rows(min_row=2, max_row=2, values_only=True))[0]
         config.SYMBOL = settings[0]
-        config.QTY = int(settings[1])
+        try:
+            config.QTY = int(settings[1])
+        except (ValueError, TypeError):
+            logger.warning("Invalid 'Lot Size' value in Settings sheet. Please fill it out.")
+
         config.EXPIRY_DATE = settings[3]
         entry_time_str = settings[4]
         exit_time_str = settings[5]
-        config.SL_LIMIT = settings[6]
 
+        try:
+            config.SL_LIMIT = float(settings[6])
+        except (ValueError, TypeError):
+            logger.warning("Invalid 'SL Limit' value in Settings sheet. Please fill it out.")
 
-        if entry_time_str:
-            config.ENTRY_TIME = tuple(map(int, entry_time_str.split(':')))
-        if exit_time_str:
-            config.EXIT_TIME = tuple(map(int, exit_time_str.split(':')))
+        if entry_time_str and 'HH' not in str(entry_time_str):
+            try:
+                config.ENTRY_TIME = tuple(map(int, str(entry_time_str).split(':')))
+            except ValueError:
+                logger.error(f"Invalid Entry Time format: {entry_time_str}. Please use HH:MM:SS.")
+
+        if exit_time_str and 'HH' not in str(exit_time_str):
+            try:
+                config.EXIT_TIME = tuple(map(int, str(exit_time_str).split(':')))
+            except ValueError:
+                logger.error(f"Invalid Exit Time format: {exit_time_str}. Please use HH:MM:SS.")
 
     except FileNotFoundError:
         logger.error("Error: trading_system.xlsx not found.")
