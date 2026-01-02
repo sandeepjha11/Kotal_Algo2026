@@ -40,14 +40,16 @@ def login():
     mobile_number = str(config.Mob).replace("+91", "")
     login_response = client.totp_login(mobile_number=f"+91{mobile_number}", ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
     logger.info(f"Login API Response: {login_response}")
-    if 'Error Message' in login_response:
-        logger.fatal(f"Login failed: {login_response['Error Message']}")
+    if 'data' not in login_response or 'sid' not in login_response['data']:
+        error_message = login_response.get('error', [{}])[0].get('message', 'Unknown login error')
+        logger.fatal(f"Login failed: {error_message}")
         exit()
 
-    validation_response = client.totp_validate(mpin=config.MPIN)
+    validation_response = client.totp_validate(mpin=str(config.MPIN))
     logger.info(f"Validation API Response: {validation_response}")
-    if 'sid' not in validation_response:
-        logger.fatal(f"MPIN validation failed: {validation_response.get('Error Message', 'Unknown error')}")
+    if 'data' not in validation_response or 'sid' not in validation_response['data']:
+        error_message = validation_response.get('error', [{}])[0].get('message', 'Unknown validation error')
+        logger.fatal(f"MPIN validation failed: {error_message}")
         exit()
 
     return client
