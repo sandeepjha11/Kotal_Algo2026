@@ -2,13 +2,17 @@ import pandas as pd
 from datetime import datetime,time
 from dateutil.relativedelta import relativedelta
 import threading
-import config 
+import config
 from KotakOrder import  KotakAPI
-from time  import sleep  
+from time  import sleep
 from logger import logger
 import warnings
 import pyotp
-from neo_api_client import NeoAPI       
+from neo_api_client import NeoAPI
+from excel_reader import load_credentials_and_settings, read_trading_signals
+from excel_interface import update_option_chain, update_trading_sheet, create_excel_file
+import os
+import openpyxl
 warnings.filterwarnings('ignore')
 
 
@@ -28,17 +32,27 @@ def on_error(error_message):
 
 def on_close(message):
     logger.info(f'Websocket Close {message}')
-    
+
 def on_message(message):
     logger.info(f'Websocket: {message}')
-    
+
 def login():
-       
-    client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key)
-    client.totp_login(mobile_number=config.Mob, ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
-    client.totp_validate(mpin=config.MPIN)
-    #logger.info(f'{sesRes}') 
-    #threading.Thread(target = client.subscribe_to_orderfeed).start() 
+    client = NeoAPI(environment='prod', access_token=None, neo_fin_key=None, consumer_key=config.consumer_key, consumer_secret=config.CS)
+    mobile_number = str(config.Mob).replace("+91", "")
+    login_response = client.totp_login(mobile_number=f"+91{mobile_number}", ucc=config.ucc, totp=pyotp.TOTP(config.totp).now())
+    logger.info(f"Login API Response: {login_response}")
+    if 'data' not in login_response or 'sid' not in login_response['data']:
+        error_message = login_response.get('error', [{}])[0].get('message', 'Unknown login error')
+        logger.fatal(f"Login failed: {error_message}")
+        exit()
+
+    validation_response = client.totp_validate(mpin=str(config.MPIN))
+    logger.info(f"Validation API Response: {validation_response}")
+    if 'data' not in validation_response or 'sid' not in validation_response['data']:
+        error_message = validation_response.get('error', [{}])[0].get('message', 'Unknown validation error')
+        logger.fatal(f"MPIN validation failed: {error_message}")
+        exit()
+
     return client
 
 
@@ -46,23 +60,32 @@ def initializer():
     config.NEO_OBJ : NeoAPI  = login()
     cashUrl = config.NEO_OBJ.scrip_master(exchange_segment = "NSE")
     nfoUrl = config.NEO_OBJ.scrip_master(exchange_segment = "NFO")
+
+    if isinstance(cashUrl, dict) and 'Error Message' in cashUrl:
+        logger.fatal(f"Failed to get cash scrip master: {cashUrl['Error Message']}")
+        exit()
+
+    if isinstance(nfoUrl, dict) and 'Error Message' in nfoUrl:
+        logger.fatal(f"Failed to get NFO scrip master: {nfoUrl['Error Message']}")
+        exit()
+
     logger.info(f'{cashUrl} \n {nfoUrl}')
 
     nfodf = pd.read_csv(nfoUrl)
     nfodf.columns = [c.strip() for c in nfodf.columns.values.tolist()]
-    nfodf['lExpiryDate'] = pd.to_datetime(nfodf['lExpiryDate'],unit='s').apply(lambda x: x.date() + relativedelta(years=10) ) 
+    nfodf['lExpiryDate'] = pd.to_datetime(nfodf['lExpiryDate'],unit='s').apply(lambda x: x.date() + relativedelta(years=10) )
 
     eqdf = pd.read_csv(cashUrl)
     eqdf.columns = [c.strip() for c in eqdf.columns.values.tolist()]
 
-    
+
     weekly_expiry =nfodf[(nfodf.pInstType == 'OPTIDX') & (nfodf.pSymbolName == config.SYMBOL)]['lExpiryDate'].tolist()
     weekly_expiry.sort()
     exp = weekly_expiry[config.EXPIRY_OFFSET]
     config.TOKEN_MAP  = nfodf[(nfodf.pInstType == 'OPTIDX') & (nfodf.pSymbolName == config.SYMBOL) & (nfodf['lExpiryDate'] == exp)]
     config.SPOT_TOKEN = eqdf[eqdf.pSymbolName == config.SYMBOL].iloc[0]['pSymbol']
     logger.info(f'TOKEN MAP {config.TOKEN_MAP}')
-   
+
 
 
 
@@ -71,8 +94,6 @@ def getNearStrike(Quotedf,premium):
     Quotedf.sort_values(by = 'diff', inplace =True)
     return  Quotedf.iloc[0].to_dict()
 
-
-import pandas as pd
 
 def parse_quotes(x):
     """
@@ -120,7 +141,7 @@ def parse_quotes(x):
     if 'ltp' in df.columns:
         df['ltp'] = pd.to_numeric(df['ltp'], errors='coerce')
     # Enforce schema: add missing columns with None
-    for col in ['ltp', 'pSymbol', 'pTrdSymbol']:
+    for col in ['ltp', 'pSymbol', 'pTrdSymbol', 'open', 'high', 'low', 'close', 'volume']:
         if col not in df.columns:
             df[col] = None
 
@@ -129,98 +150,149 @@ def parse_quotes(x):
 
 # Usage inside your function
 def getQuotes(instList):
-    x = config.NEO_OBJ.quotes(instrument_tokens=instList, quote_type="")
+    x = config.NEO_OBJ.quotes(instrument_tokens=instList, quote_type="ohlc")
     Quotedf = parse_quotes(x)
     return Quotedf
 
 
-def getCEPESymbols(cePremium, pePremium):
+
+def get_trading_symbol(strike_price, option_type):
+    symbolOpt = config.TOKEN_MAP.copy()
+    # remove spaces from pStrike to match with strike_price
+    symbolOpt['pStrike'] = symbolOpt['pStrike'].astype(str).str.replace(".0", "").str.strip()
+    strike_price = str(strike_price).strip()
+    option_type = option_type.strip()
+
+    instrument = symbolOpt[(symbolOpt.pStrike == strike_price) & (symbolOpt.pOptionType == option_type)]
+    if not instrument.empty:
+        return instrument.iloc[0]['pTrdSymbol']
+    return None
+
+def get_lot_size(trading_symbol):
+    symbolOpt = config.TOKEN_MAP.copy()
+    instrument = symbolOpt[symbolOpt.pTrdSymbol == trading_symbol]
+    if not instrument.empty:
+        return int(instrument.iloc[0]['lLotSize'])
+    return 0
+
+def update_option_chain_data(workbook):
     symbolOpt = config.TOKEN_MAP
-    ceStrikedf = symbolOpt[symbolOpt.pOptionType == 'CE']
-    peStrikedf = symbolOpt[symbolOpt.pOptionType == 'PE']
-    lotSize = int(peStrikedf.iloc[0]['lLotSize'])
-    ceInstList = []
-    for i in ceStrikedf.index:
-        strikeInfo = ceStrikedf.loc[i]
-        ceInstList.append({'instrument_token' : strikeInfo['pSymbol'] , "exchange_segment": strikeInfo['pExchSeg']})
-    ceQuotedf = getQuotes(ceInstList)
-    ceStrike =  getNearStrike(ceQuotedf,cePremium)
-    logger.info(f'Selected Strike CE {ceStrike}')
+    spot_quote = getQuotes([{'instrument_token' : config.SPOT_TOKEN , "exchange_segment": "NSE"}])
+    if spot_quote.empty or spot_quote.iloc[0]['ltp'] is None:
+        logger.warning("Could not fetch spot LTP. Skipping option chain update.")
+        return
 
-    peInstList = []
-    for i in peStrikedf.index:
-        strikeInfo = peStrikedf.loc[i]
-        peInstList.append({'instrument_token' : strikeInfo['pSymbol'] , "exchange_segment": strikeInfo['pExchSeg']})
-    peQuotedf = getQuotes(peInstList)
-    peStrike =  getNearStrike(peQuotedf,pePremium)
-    logger.info(f'Selected Strike PE {peStrike}')
-    return ceStrike , peStrike , lotSize
+    spot_ltp = spot_quote.iloc[0]['ltp']
+    atm_strike = round(spot_ltp / 50) * 50
 
-def placeEntryOrder():
+    strike_range = 5
+    instList = []
+    for i in range(atm_strike - strike_range * 50, atm_strike + (strike_range + 1) * 50, 50):
+        for option_type in ['CE', 'PE']:
+            instrument = symbolOpt[(symbolOpt.pStrike == str(i)) & (symbolOpt.pOptionType == option_type)]
+            if not instrument.empty:
+                instList.append({'instrument_token' : instrument.iloc[0]['pSymbol'] , "exchange_segment": instrument.iloc[0]['pExchSeg']})
+
+    quotedf = getQuotes(instList)
+    # format the data to be written to excel
+    option_chain_data = []
+    for index, row in quotedf.iterrows():
+        # find the strike price from the TOKEN_MAP
+        instrument = config.TOKEN_MAP[config.TOKEN_MAP.pSymbol == row['pSymbol']]
+        if not instrument.empty:
+            strike_price = instrument.iloc[0]['pStrike']
+            option_chain_data.append([strike_price, row['ltp'], row.get('open'), row.get('high'), row.get('low'), row.get('close'), row.get('volume')])
+    update_option_chain(workbook, option_chain_data)
+
+def place_order_from_signals(workbook):
     neoOrderApi = KotakAPI(config.NEO_OBJ)
-    if not getTimeCondition():
-        msg = f'Time out'    
-        logger.info(msg)
-        return msg
-    
-    ceStrike , peStrike, lotSize = getCEPESymbols(100, 100)   # CE , PE
-    transType = 'S'
-    ceTsym = ceStrike.get('pTrdSymbol') or ceStrike.get('trading_symbol')
-    if not ceTsym:
-        raise ValueError(f"Missing trading symbol in ceStrike: {ceStrike}")
-    quantity = config.QTY*lotSize
-    ceEntryOrderid = neoOrderApi.placeOrder(ceTsym,transType,quantity,order_type ='MKT',productType= 'MIS' )
-    
-       
-    peTsym = peStrike.get('pTrdSymbol') or peStrike.get('trading_symbol')
-    if not peTsym:
-        raise ValueError(f"Missing trading symbol in peStrike: {peStrike}")
-    quantity = config.QTY*lotSize
-    peEntryOrderid = neoOrderApi.placeOrder(peTsym,transType,quantity,order_type ='MKT',productType= 'MIS' )
+    signals = read_trading_signals()
+    for signal in signals:
+        if not getTimeCondition():
+            msg = f'Time out'
+            logger.info(msg)
+            return
 
-    isAllTrigger = False
-    for i in range(10):
-        isAllTrigger,orderdf  = neoOrderApi.isAllOrderTrigger([ceEntryOrderid,peEntryOrderid])
-        if isAllTrigger:
-            ceEntryInfo= orderdf[orderdf.nOrdNo == ceEntryOrderid].iloc[0].to_dict()
-            cetradedPrice = float(ceEntryInfo['avgPrc'])
-            
-            
-            peEntryInfo = orderdf[orderdf.nOrdNo == peEntryOrderid].iloc[0].to_dict()
-            petradedPrice = float(peEntryInfo['avgPrc'])
-            logger.info(f'Entry Order traded CE  {cetradedPrice}   PE {petradedPrice} .Place SL Order ')
-            
-            ceSLOrderid  = placeSLOrder(neoOrderApi, ceEntryInfo)
-            peSLOrderid  = placeSLOrder(neoOrderApi, peEntryInfo)
-            break
-        sleep(i)
+        row_index = signal['row_index']
+        strike_price = signal['strike_price']
+        option_type = signal['option_type']
+        buy_sell = signal['buy_sell']
+        sl = signal['sl']
 
-    if not isAllTrigger:
-        logger.info(f'Order not executed Completly. Cancel Open Order.')
-        neoOrderApi.exitAllPosition()
-    
-    else:
-        square_off_positons()   
-        
-       
-def placeSLOrder(neoOrderApi : KotakAPI, entryInfo:dict):
+        if not isinstance(sl, (int, float)):
+            logger.error(f"Invalid SL value for strike {strike_price}. Please enter a valid number.")
+            continue
+
+        tsym = get_trading_symbol(strike_price, option_type)
+        if not tsym:
+            logger.error(f"Could not find trading symbol for strike {strike_price} and option type {option_type}")
+            continue
+
+        lot_size = get_lot_size(tsym)
+        quantity = config.QTY * lot_size
+
+        order_id = neoOrderApi.placeOrder(tsym, buy_sell, quantity, order_type='MKT', productType='MIS')
+
+        if order_id:
+            trade = read_trading_signals(all_trades=True)
+            trade = [t for t in trade if t['row_index'] == row_index][0]
+            # Update the trading sheet with the order status
+            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Placed", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
+
+            for i in range(10):
+                sleep(1) # wait for order to get executed
+                order_history = neoOrderApi.getOrderbook()
+                if order_history:
+                    order_df = pd.DataFrame(order_history['data'])
+                    order = order_df[order_df['nOrdNo'] == order_id]
+                    if not order.empty:
+                        order = order.iloc[0]
+                        if order['ordSt'] == 'complete':
+                            entry_price = float(order['avgPrc'])
+                            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Executed", entry_price, trade['exit_price'], sl, trade.get('mtm')])
+                            placeSLOrder(neoOrderApi, order.to_dict(), sl)
+                            break
+                        elif order['ordSt'] == 'rejected':
+                            update_trading_sheet(workbook, row_index, [strike_price, option_type, buy_sell, "Rejected", trade['entry_price'], trade['exit_price'], sl, trade.get('mtm')])
+                            break
+
+
+def update_mtm(workbook):
+    neoOrderApi = KotakAPI(config.NEO_OBJ)
+    positions = neoOrderApi.getPosition()
+    if not (positions and 'data' in positions):
+        return
+
+    trades = read_trading_signals(all_trades=True)
+    if not trades:
+        return
+
+    for position in positions['data']:
+        for trade in trades:
+            if get_trading_symbol(trade['strike_price'], trade['option_type']) == position['trdSym']:
+                ltp = getQuotes([{'instrument_token' : position['pSymbol'] , "exchange_segment": position['pExchSeg']}])
+                if not ltp.empty:
+                    ltp = ltp.iloc[0]['ltp']
+                    mtm = (ltp - trade['entry_price']) * int(position['flBuyQty']) if trade['buy_sell'] == 'B' else (trade['entry_price'] - ltp) * int(position['flSellQty'])
+                    update_trading_sheet(workbook, trade['row_index'], [trade['strike_price'], trade['option_type'], trade['buy_sell'], trade['status'], trade['entry_price'], trade['exit_price'], trade.get('sl'), mtm])
+
+
+def placeSLOrder(neoOrderApi : KotakAPI, entryInfo:dict, sl:float):
     tsym = entryInfo['trdSym']
     quantity =  abs(int(entryInfo['qty']))
     tradedPrice = float(entryInfo['avgPrc'])
     if entryInfo['trnsTp'] == 'B':
-        mSL  = neoOrderApi.truncate(tradedPrice*(1 - config.SL/100)  )
+        mSL  = neoOrderApi.truncate(tradedPrice*(1 - sl/100)  )
         mLimit = mSL - config.SL_LIMIT
         mTransType = 'S'
-                    
+
     else:
-        mSL  =  neoOrderApi.truncate(tradedPrice*(1 + config.SL/100)  )
+        mSL  =  neoOrderApi.truncate(tradedPrice*(1 + sl/100)  )
         mLimit = mSL + config.SL_LIMIT
-        mTransType = 'B'  
+        mTransType = 'B'
     logger.info(f'Placing {tsym} SL Order.  SL: {mSL} {mLimit} Qty: {quantity}')
     mSLOrderid = neoOrderApi.placeOrder(tsym,mTransType,quantity,order_type ='SL',productType= entryInfo['prod'] ,trigger_price=mSL,limitPrice=mLimit )
-    return mSLOrderid 
-
-
+    return mSLOrderid
 
 def getTimeCondition():
     startTime =  datetime.now(config.TIME_ZONE)
@@ -234,25 +306,30 @@ def square_off_positons():
     logger.info(f"All open Positions  closed after : {interval/60}  mins")
     if interval > 0 :
         neoOrderApi = KotakAPI(config.NEO_OBJ)
-        threading.Timer(interval, neoOrderApi.exitAllPosition).start() 
+        threading.Timer(interval, neoOrderApi.exitAllPosition).start()
 
 if __name__ == '__main__':
+    if not os.path.exists("trading_system.xlsx"):
+        create_excel_file()
+    load_credentials_and_settings()
+
+    # Validate critical credentials
+    critical_credentials = ['consumer_key', 'CS', 'Mob', 'Pwd', 'MPIN', 'totp', 'ucc']
+    if any(not getattr(config, cred) for cred in critical_credentials):
+        logger.fatal("Critical credentials are not set. Please fill out the 'Credentials' sheet in trading_system.xlsx and restart the application.")
+        exit()
+
     startTime =  datetime.now(config.TIME_ZONE)
     closingTime = startTime.replace(hour=9, minute=15,second=0,microsecond=0)
     interval = max(0, (closingTime - startTime).total_seconds())
     logger.info(f'System will Start after  {interval} sec' )
     sleep(interval)
     initializer()
-    
-    closingTime = startTime.replace(hour=config.ENTRY_TIME[0], minute=config.ENTRY_TIME[1],second=config.ENTRY_TIME[2],microsecond=0)
-    interval = max(0, (closingTime - datetime.now(config.TIME_ZONE)).total_seconds())
-    logger.info(f'Order will Place  after  {interval} sec' )
-    sleep(interval)
-    placeEntryOrder()
-    
- 
-    
-    
-  
-   
 
+    while True:
+        workbook = openpyxl.load_workbook("trading_system.xlsx")
+        update_option_chain_data(workbook)
+        place_order_from_signals(workbook)
+        update_mtm(workbook)
+        workbook.save("trading_system.xlsx")
+        sleep(5) # Update every 5 seconds
