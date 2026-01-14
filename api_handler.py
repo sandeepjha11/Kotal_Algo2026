@@ -5,6 +5,26 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# --- WebSocket Callback Functions ---
+def on_message(message):
+    logger.info(f"WebSocket Message: {message}")
+
+def on_error(error_message):
+    logger.error(f"WebSocket Error: {error_message}")
+
+def on_close(message):
+    logger.info(f"WebSocket Closed: {message}")
+
+def on_order_message(message):
+    logger.info(f"Order Feed Message: {message}")
+
+def on_order_error(error_message):
+    logger.error(f"Order Feed Error: {error_message}")
+
+def on_order_close():
+    logger.info("Order Feed Closed.")
+
+
 class APIHandler:
     def __init__(self, config):
         self.config = config
@@ -17,11 +37,21 @@ class APIHandler:
             self.client = NeoAPI(
                 consumer_key=self.kotak_config['CONSUMER_KEY'],
                 consumer_secret=self.kotak_config['API_SECRET'],
-                environment='prod'
+                environment='prod',
+                on_message=on_message,
+                on_error=on_error,
+                on_close=on_close,
+                on_order_message=on_order_message,
+                on_order_error=on_order_error,
+                on_order_close=on_order_close
             )
             self.client.login(mobilenumber=mobile_number, password=password)
             self.client.session_2fa(OTP=mpin)
-            logger.info("Login successful.")
+
+            import threading
+            threading.Thread(target=self.client.subscribe_to_orderfeed).start()
+
+            logger.info("Login successful and subscribed to order feed.")
             return True
         except Exception as e:
             logger.error(f"Login failed: {e}")
