@@ -38,14 +38,16 @@ class APIHandler:
 
             self.client = NeoAPI(
                 consumer_key=self.kotak_config['CONSUMER_KEY'],
-                environment='prod',
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close,
-                on_order_message=on_order_message,
-                on_order_error=on_order_error,
-                on_order_close=on_order_close
+                environment='prod'
             )
+
+            # Assign callbacks
+            self.client.on_message = on_message
+            self.client.on_error = on_error
+            self.client.on_close = on_close
+            self.client.on_order_message = on_order_message
+            self.client.on_order_error = on_order_error
+            self.client.on_order_close = on_order_close
 
             self.client.totp_login(
                 mobile_number=self.kotak_config['MOBILE'],
