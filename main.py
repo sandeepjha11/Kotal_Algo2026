@@ -32,10 +32,12 @@ class TradingApp:
 
     def build_main_ui(self):
         """Builds the main UI after a successful login."""
-        # --- Get Scrip Master URL ---
-        self.scrip_master_url = self.api_handler.get_scrip_master()
-        if not self.scrip_master_url:
-            messagebox.showerror("Error", "Failed to get scrip master. The application will close.")
+        # --- Get Scrip Master URLs ---
+        self.nfo_scrip_master_url = self.api_handler.get_scrip_master(exchange='NFO')
+        self.cm_scrip_master_url = self.api_handler.get_scrip_master(exchange='nse_cm')
+
+        if not self.nfo_scrip_master_url or not self.cm_scrip_master_url:
+            messagebox.showerror("Error", "Failed to get scrip master files. The application will close.")
             self.root.quit()
             return
 
@@ -61,13 +63,19 @@ class TradingApp:
 
     def update_index_prices(self):
         """Fetches and updates the index prices."""
-        index_tokens = [
-            {'instrument_token': 26000, "exchange_segment": 'nse_cm'}, # NIFTY 50
-            {'instrument_token': 26009, "exchange_segment": 'nse_cm'}, # BANKNIFTY
-            # Add FINNIFTY and MIDCPNIFTY tokens here
-        ]
+        indices_to_fetch = ["NIFTY 50", "BANKNIFTY"] # Add more as needed
 
-        quotes = self.api_handler.get_quotes(instrument_tokens=index_tokens)
+        instrument_tokens = []
+        for index_name in indices_to_fetch:
+            token = self.api_handler.get_instrument_token(index_name, self.cm_scrip_master_url)
+            if token:
+                instrument_tokens.append({'instrument_token': str(token), "exchange_segment": 'nse_cm'})
+
+        if not instrument_tokens:
+            self.root.after(2000, self.update_index_prices)
+            return
+
+        quotes = self.api_handler.get_quotes(instrument_tokens=instrument_tokens)
 
         if quotes is not None:
             for i, quote in enumerate(quotes):
@@ -88,17 +96,27 @@ class TradingApp:
         if not symbol or not expiry:
             return
 
-        # For simplicity, we'll get the spot LTP and assume ATM is the closest strike.
-        # A more robust solution would involve getting the actual spot price.
-        spot_ltp = 0.0 # Placeholder
-        nifty_token = 26000 # NIFTY 50 token
-        spot_ltp = self.api_handler.get_ltp(instrument_token=nifty_token, exchange_segment='nse_cm')
+        # Get the instrument token for the selected index to fetch its spot LTP.
+        # Note: The symbol in the dropdown (e.g., "NIFTY") might differ from the display name ("NIFTY 50").
+        # We'll need a mapping or a more robust lookup if they differ significantly.
+        # For now, we assume a direct or slightly modified lookup works.
+        symbol_for_lookup = "NIFTY 50" if symbol == "NIFTY" else "Nifty Bank" if symbol == "BANKNIFTY" else symbol
+        instrument_token = self.api_handler.get_instrument_token(symbol_for_lookup, self.cm_scrip_master_url)
+
+        if not instrument_token:
+            self.root.after(5000, self.update_atm_strikes) # Retry after a delay
+            return
+
+        spot_ltp = self.api_handler.get_ltp(instrument_token=instrument_token, exchange_segment='nse_cm')
+        if spot_ltp is None:
+            self.root.after(5000, self.update_atm_strikes) # Retry if LTP fetch fails
+            return
 
 
         # Find the closest CE and PE strikes to the spot price
         # This is a simplification. The real logic would be more complex.
-        self.ce_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'CE', self.scrip_master_url)
-        self.pe_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'PE', self.scrip_master_url)
+        self.ce_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'CE', self.nfo_scrip_master_url)
+        self.pe_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'PE', self.nfo_scrip_master_url)
 
         if isinstance(self.ce_strike_info, dict):
             try:
@@ -127,7 +145,7 @@ class TradingApp:
     def update_expiries(self, event=None):
         """Updates the expiry dropdown based on the selected symbol."""
         symbol = self.symbol_var.get()
-        expiries = self.api_handler.get_expiries(symbol, self.scrip_master_url)
+        expiries = self.api_handler.get_expiries(symbol, self.nfo_scrip_master_url)
         self.combo_expiry['values'] = expiries
         if expiries:
             self.expiry_var.set(expiries[0]) # Set to the first available expiry
@@ -229,7 +247,7 @@ class TradingApp:
 
         self.symbol_var = tk.StringVar()
         self.combo_symbol = ttk.Combobox(symbol_frame, textvariable=self.symbol_var, width=10)
-        self.combo_symbol['values'] = self.api_handler.get_trading_symbols(self.scrip_master_url)
+        self.combo_symbol['values'] = self.api_handler.get_trading_symbols(self.nfo_scrip_master_url)
         self.combo_symbol.pack(side="left")
         self.symbol_var.set("NIFTY") # Default symbol
         self.combo_symbol.bind("<<ComboboxSelected>>", self.update_expiries)

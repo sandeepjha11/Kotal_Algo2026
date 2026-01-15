@@ -77,14 +77,25 @@ class APIHandler:
             logger.error("Client not logged in.")
             return None
         try:
-            quotes = self.client.quotes(instrument_tokens=instrument_tokens, quote_type=quote_type)
-            if quotes and quotes.get('stat') == 'Ok':
-                return quotes.get('message')
-            else:
-                logger.error(f"Error in quotes API response: {quotes}")
+            response = self.client.quotes(instrument_tokens=instrument_tokens, quote_type=quote_type)
+
+            # A successful response is a list of quote dictionaries.
+            if isinstance(response, list):
+                return response
+
+            # An unsuccessful response is a dictionary.
+            elif isinstance(response, dict):
+                logger.error(f"Error in quotes API response: {response}")
                 return None
+
+            # Handle any other unexpected format.
+            else:
+                logger.warning(f"Unexpected response format from quotes API: {response}")
+                return None
+
         except Exception as e:
-            logger.error(f"Error fetching quotes: {e}")
+            # Catch potential exceptions from the API call itself.
+            logger.error(f"Exception while fetching quotes: {e}")
             return None
 
     def get_scrip_master(self, exchange='NFO'):
@@ -127,6 +138,25 @@ class APIHandler:
         except Exception as e:
             logger.error(f"Error reading expiries from scrip master: {e}")
             return []
+
+    def get_instrument_token(self, symbol_name, scrip_master_url):
+        """Finds the instrument token for a given symbol name from the cash market scrip master."""
+        try:
+            df = pd.read_csv(scrip_master_url)
+            # Find the exact match for the symbol name. Note: 'pSymbolName' might be different from the display name.
+            # We will search for common index names. A more robust solution might need a mapping.
+            if symbol_name == "NIFTY 50":
+                instrument = df[df['pSymbolName'] == 'Nifty 50'].iloc[0]
+            elif symbol_name == "BANKNIFTY":
+                instrument = df[df['pSymbolName'] == 'Nifty Bank'].iloc[0]
+            # Add other indices as needed
+            else:
+                instrument = df[df['pSymbolName'] == symbol_name].iloc[0]
+
+            return instrument['pSymbol']
+        except Exception as e:
+            logger.error(f"Could not find instrument token for {symbol_name}: {e}")
+            return None
 
     def get_atm_strikes(self, symbol, expiry):
         # Placeholder for fetching ATM strikes
