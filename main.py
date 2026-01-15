@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
 import time
-from login import LoginWindow
 from api_handler import APIHandler
 import configparser
+from tkinter import messagebox
 
 class TradingApp:
     def __init__(self, root):
@@ -23,18 +23,15 @@ class TradingApp:
         self.style.configure("TCombobox", fieldbackground="#3a3a3a", background="#212121", foreground="white", arrowcolor="white")
         self.style.map('TCombobox', fieldbackground=[('readonly', '#3a3a3a')])
 
-        # --- Hide main window and show login ---
-        self.root.withdraw()
-        self.show_login_window()
+        # --- Auto-login ---
+        if self.api_handler.autologin():
+            self.build_main_ui()
+        else:
+            messagebox.showerror("Login Failed", "Auto-login failed. Please check your credentials and try again.")
+            self.root.quit()
 
-    def show_login_window(self):
-        login_window = LoginWindow(self.root, self.api_handler, self.on_login_success)
-        login_window.grab_set()
-
-    def on_login_success(self):
-        """Callback for successful login. Builds the main UI."""
-        self.root.deiconify()
-
+    def build_main_ui(self):
+        """Builds the main UI after a successful login."""
         # --- Download Scrip Master ---
         self.api_handler.get_scrip_master()
 

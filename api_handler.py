@@ -31,9 +31,11 @@ class APIHandler:
         self.client = None
         self.kotak_config = self.config['KOTAK']
 
-    def login(self, mobile_number, password, mpin):
-        """Logs into the Kotak Neo API and returns the client instance."""
+    def autologin(self):
+        """Performs an automated TOTP-based login."""
         try:
+            import pyotp
+
             self.client = NeoAPI(
                 consumer_key=self.kotak_config['CONSUMER_KEY'],
                 consumer_secret=self.kotak_config['API_SECRET'],
@@ -45,16 +47,21 @@ class APIHandler:
                 on_order_error=on_order_error,
                 on_order_close=on_order_close
             )
-            self.client.login(mobilenumber=mobile_number, password=password)
-            self.client.session_2fa(OTP=mpin)
+
+            self.client.totp_login(
+                mobile_number=self.kotak_config['MOBILE'],
+                ucc=self.kotak_config['UCC'],
+                totp=pyotp.TOTP(self.kotak_config['TOTP_KEY']).now()
+            )
+            self.client.totp_validate(mpin=self.kotak_config['MPIN'])
 
             import threading
             threading.Thread(target=self.client.subscribe_to_orderfeed).start()
 
-            logger.info("Login successful and subscribed to order feed.")
+            logger.info("Auto-login successful and subscribed to order feed.")
             return True
         except Exception as e:
-            logger.error(f"Login failed: {e}")
+            logger.error(f"Auto-login failed: {e}")
             return False
 
     def get_quotes(self, instrument_tokens, quote_type="ltp"):
