@@ -2,6 +2,8 @@
 from neo_api_client import NeoAPI
 import logging
 import pandas as pd
+import datetime as dt
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +105,17 @@ class APIHandler:
         """Returns a list of expiry dates for a given symbol."""
         try:
             df = pd.read_csv(scrip_master_url)
-            expiries = df[df['pSymbolName'] == symbol]['lExpiryDate'].unique().tolist()
-            return sorted(expiries)
+            df = df[(df['pSymbolName'] == symbol) & (df['pInstType'] == 'OPTIDX')]
+
+            # Convert epoch to datetime, apply date logic
+            df['pExpiryDate'] = df['pExpiryDate'].apply(
+                lambda x: (dt.datetime.fromtimestamp(x).date() +
+                           relativedelta(years=10) -
+                           pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            )
+
+            all_expiries = sorted(set(df['pExpiryDate']))
+            return all_expiries
         except Exception as e:
             logger.error(f"Error reading expiries from scrip master: {e}")
             return []
@@ -125,9 +136,16 @@ class APIHandler:
         try:
             df = pd.read_csv(scrip_master_url)
 
+            # Apply the same date logic to the dataframe for consistent filtering
+            df['pExpiryDate'] = df['pExpiryDate'].apply(
+                lambda x: (dt.datetime.fromtimestamp(x).date() +
+                           relativedelta(years=10) -
+                           pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            )
+
             # Filter for the specific symbol, expiry, and option type
             filtered_df = df[(df['pSymbolName'] == symbol) &
-                             (df['lExpiryDate'] == expiry) &
+                             (df['pExpiryDate'] == expiry) &
                              (df['pOptionType'] == option_type)]
 
             if filtered_df.empty:
