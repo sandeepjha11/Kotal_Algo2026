@@ -69,10 +69,14 @@ class TradingApp:
 
         quotes = self.api_handler.get_quotes(instrument_tokens=index_tokens)
 
-        if quotes:
+        if quotes is not None:
             for i, quote in enumerate(quotes):
-                if i < len(self.index_price_labels):
-                    self.index_price_labels[i].config(text=f"{quote['last_traded_price']:.2f}")
+                if i < len(self.index_price_labels) and isinstance(quote, dict) and 'last_traded_price' in quote:
+                    try:
+                        price = float(quote['last_traded_price'])
+                        self.index_price_labels[i].config(text=f"{price:.2f}")
+                    except (ValueError, TypeError):
+                        self.index_price_labels[i].config(text="Error")
 
         self.root.after(2000, self.update_index_prices) # Update every 2 seconds
 
@@ -96,13 +100,26 @@ class TradingApp:
         self.ce_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'CE', self.scrip_master_url)
         self.pe_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'PE', self.scrip_master_url)
 
-        if self.ce_strike_info:
-            self.ce_strike_label.config(text=f"{self.ce_strike_info['pStrikePrice']:.1f}")
-            self.ce_ltp_label.config(text=f"{self.ce_strike_info['last_traded_price']:.2f}")
+        if isinstance(self.ce_strike_info, dict):
+            try:
+                strike = float(self.ce_strike_info.get('pStrikePrice', 0.0))
+                ltp = float(self.ce_strike_info.get('last_traded_price', 0.0))
+                self.ce_strike_label.config(text=f"{strike:.1f}")
+                self.ce_ltp_label.config(text=f"{ltp:.2f}")
+            except (ValueError, TypeError):
+                self.ce_strike_label.config(text="Error")
+                self.ce_ltp_label.config(text="Error")
 
-        if self.pe_strike_info:
-            self.pe_strike_label.config(text=f"{self.pe_strike_info['pStrikePrice']:.1f}")
-            self.pe_ltp_label.config(text=f"{self.pe_strike_info['last_traded_price']:.2f}")
+
+        if isinstance(self.pe_strike_info, dict):
+            try:
+                strike = float(self.pe_strike_info.get('pStrikePrice', 0.0))
+                ltp = float(self.pe_strike_info.get('last_traded_price', 0.0))
+                self.pe_strike_label.config(text=f"{strike:.1f}")
+                self.pe_ltp_label.config(text=f"{ltp:.2f}")
+            except (ValueError, TypeError):
+                self.pe_strike_label.config(text="Error")
+                self.pe_ltp_label.config(text="Error")
 
         self.root.after(5000, self.update_atm_strikes) # Update every 5 seconds
 

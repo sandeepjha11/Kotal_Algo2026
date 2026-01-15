@@ -14,6 +14,9 @@ def on_message(message):
 def on_error(error_message):
     logger.error(f"WebSocket Error: {error_message}")
 
+def on_open(message):
+    logger.info(f"WebSocket Opened: {message}")
+
 def on_close(message):
     logger.info(f"WebSocket Closed: {message}")
 
@@ -44,6 +47,7 @@ class APIHandler:
             )
 
             # Assign callbacks
+            self.client.on_open = on_open
             self.client.on_message = on_message
             self.client.on_error = on_error
             self.client.on_close = on_close
@@ -74,7 +78,11 @@ class APIHandler:
             return None
         try:
             quotes = self.client.quotes(instrument_tokens=instrument_tokens, quote_type=quote_type)
-            return quotes['message']
+            if quotes and quotes.get('stat') == 'Ok':
+                return quotes.get('message')
+            else:
+                logger.error(f"Error in quotes API response: {quotes}")
+                return None
         except Exception as e:
             logger.error(f"Error fetching quotes: {e}")
             return None
