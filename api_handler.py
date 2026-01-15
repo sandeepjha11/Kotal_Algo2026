@@ -37,7 +37,7 @@ class APIHandler:
             import pyotp
 
             self.client = NeoAPI(
-                consumer_key=self.kotak_config['CONSUMER_KEY'],
+                consumer_key=self.kotak_config['consumer_key'],
                 environment='prod'
             )
 
@@ -50,11 +50,11 @@ class APIHandler:
             self.client.on_order_close = on_order_close
 
             self.client.totp_login(
-                mobile_number=self.kotak_config['MOBILE'],
-                ucc=self.kotak_config['UCC'],
-                totp=pyotp.TOTP(self.kotak_config['TOTP_KEY']).now()
+                mobile_number=self.kotak_config['mobile'],
+                ucc=self.kotak_config['ucc'],
+                totp=pyotp.TOTP(self.kotak_config['totp_key']).now()
             )
-            self.client.totp_validate(mpin=self.kotak_config['MPIN'])
+            self.client.totp_validate(mpin=self.kotak_config['mpin'])
 
             import threading
             threading.Thread(target=self.client.subscribe_to_orderfeed).start()
