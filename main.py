@@ -32,8 +32,12 @@ class TradingApp:
 
     def build_main_ui(self):
         """Builds the main UI after a successful login."""
-        # --- Download Scrip Master ---
-        self.api_handler.get_scrip_master()
+        # --- Get Scrip Master URL ---
+        self.scrip_master_url = self.api_handler.get_scrip_master()
+        if not self.scrip_master_url:
+            messagebox.showerror("Error", "Failed to get scrip master. The application will close.")
+            self.root.quit()
+            return
 
         # --- Menu ---
         menubar = tk.Menu(self.root, bg="#212121", fg="white")
@@ -89,8 +93,8 @@ class TradingApp:
 
         # Find the closest CE and PE strikes to the spot price
         # This is a simplification. The real logic would be more complex.
-        self.ce_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'CE')
-        self.pe_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'PE')
+        self.ce_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'CE', self.scrip_master_url)
+        self.pe_strike_info = self.api_handler.get_strike_for_ltp(symbol, expiry, spot_ltp, 'PE', self.scrip_master_url)
 
         if self.ce_strike_info:
             self.ce_strike_label.config(text=f"{self.ce_strike_info['pStrikePrice']:.1f}")
@@ -106,7 +110,7 @@ class TradingApp:
     def update_expiries(self, event=None):
         """Updates the expiry dropdown based on the selected symbol."""
         symbol = self.symbol_var.get()
-        expiries = self.api_handler.get_expiries(symbol)
+        expiries = self.api_handler.get_expiries(symbol, self.scrip_master_url)
         self.combo_expiry['values'] = expiries
         if expiries:
             self.expiry_var.set(expiries[0]) # Set to the first available expiry
@@ -208,7 +212,7 @@ class TradingApp:
 
         self.symbol_var = tk.StringVar()
         self.combo_symbol = ttk.Combobox(symbol_frame, textvariable=self.symbol_var, width=10)
-        self.combo_symbol['values'] = self.api_handler.get_trading_symbols()
+        self.combo_symbol['values'] = self.api_handler.get_trading_symbols(self.scrip_master_url)
         self.combo_symbol.pack(side="left")
         self.symbol_var.set("NIFTY") # Default symbol
         self.combo_symbol.bind("<<ComboboxSelected>>", self.update_expiries)

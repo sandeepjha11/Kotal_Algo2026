@@ -38,7 +38,6 @@ class APIHandler:
 
             self.client = NeoAPI(
                 consumer_key=self.kotak_config['CONSUMER_KEY'],
-                consumer_secret=self.kotak_config['API_SECRET'],
                 environment='prod',
                 on_message=on_message,
                 on_error=on_error,
@@ -77,35 +76,35 @@ class APIHandler:
             return None
 
     def get_scrip_master(self, exchange='NFO'):
-        """Downloads and caches the scrip master file."""
+        """Gets the URL for the scrip master file."""
         if not self.client:
             logger.error("Client not logged in.")
             return None
         try:
-            self.client.scrip_master(exchange_segment=exchange)
-            logger.info(f"Scrip master for {exchange} downloaded.")
-            return True
+            url = self.client.scrip_master(exchange_segment=exchange)
+            logger.info(f"Scrip master URL for {exchange} received.")
+            return url
         except Exception as e:
-            logger.error(f"Error downloading scrip master: {e}")
-            return False
+            logger.error(f"Error getting scrip master URL: {e}")
+            return None
 
-    def get_trading_symbols(self, exchange='NFO'):
+    def get_trading_symbols(self, scrip_master_url):
         """Returns a list of unique trading symbols from the scrip master."""
         try:
-            df = pd.read_csv(f'scripmaster_{exchange}.csv')
+            df = pd.read_csv(scrip_master_url)
             return sorted(df['pSymbolName'].unique().tolist())
-        except FileNotFoundError:
-            logger.error("Scrip master file not found. Please download it first.")
+        except Exception as e:
+            logger.error(f"Error reading trading symbols from scrip master: {e}")
             return []
 
-    def get_expiries(self, symbol, exchange='NFO'):
+    def get_expiries(self, symbol, scrip_master_url):
         """Returns a list of expiry dates for a given symbol."""
         try:
-            df = pd.read_csv(f'scripmaster_{exchange}.csv')
+            df = pd.read_csv(scrip_master_url)
             expiries = df[df['pSymbolName'] == symbol]['lExpiryDate'].unique().tolist()
             return sorted(expiries)
-        except FileNotFoundError:
-            logger.error("Scrip master file not found.")
+        except Exception as e:
+            logger.error(f"Error reading expiries from scrip master: {e}")
             return []
 
     def get_atm_strikes(self, symbol, expiry):
@@ -119,10 +118,10 @@ class APIHandler:
             return quotes[0]['last_traded_price']
         return 0.0
 
-    def get_strike_for_ltp(self, symbol, expiry, target_ltp, option_type):
+    def get_strike_for_ltp(self, symbol, expiry, target_ltp, option_type, scrip_master_url):
         """Finds the strike price with the LTP closest to the target LTP."""
         try:
-            df = pd.read_csv('scripmaster_NFO.csv')
+            df = pd.read_csv(scrip_master_url)
 
             # Filter for the specific symbol, expiry, and option type
             filtered_df = df[(df['pSymbolName'] == symbol) &
