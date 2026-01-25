@@ -16,26 +16,60 @@ class APIHandler:
         self.kotak_config = self.config['KOTAK']
 
     def autologin(self, root=None):
-        """Performs an automated login using password and MPIN."""
+        """Performs an automated TOTP-based login with diagnostic popup."""
         try:
+            import pyotp
+
+            # Create NeoAPI client
             self.client = NeoAPI(
-                consumer_key=self.kotak_config['consumer_key'],
-                consumer_secret=self.kotak_config['consumer_secret'],
-                environment='prod'
+                environment='prod',
+                access_token=None,
+                neo_fin_key=None,
+                consumer_key=self.kotak_config['consumer_key']
             )
 
-            # The login method in the original script
-            self.client.login(
-                mobilenumber=self.kotak_config['mobile'],
-                password=self.kotak_config['password']
-            )
-            # The 2FA method
-            self.client.session_2fa(OTP=self.kotak_config['mpin'])
+            # Assign callbacks to dummy lambdas or leave them unset here
+            # The TradingApp will override them later
+            self.client.on_open = None
+            self.client.on_message = None
+            self.client.on_error = None
+            self.client.on_close = None
+            self.client.on_order_message = None
+            self.client.on_order_error = None
+            self.client.on_order_close = None
 
-            logger.info("Login successful.")
+            # Perform TOTP login
+            payload = self.client.totp_login(
+                mobile_number=self.kotak_config['mobile'],
+                ucc=self.kotak_config['ucc'],
+                totp=pyotp.TOTP(self.kotak_config['totp_key']).now()
+            )
+
+            # Save payload for later use (title, etc.)
+            self.login_payload = payload
+
+            # Validate with MPIN
+            self.client.totp_validate(mpin=self.kotak_config['mpin'])
+
+            # Subscribe to order feed in background
+            import threading
+            threading.Thread(target=self.client.subscribe_to_orderfeed, daemon=True).start()
+
+            logger.info("Auto-login successful and subscribed to order feed.")
+
+            # --- Diagnostic popup ---
+            if root:
+                from tkinter import messagebox
+                root.after(100, lambda: messagebox.showinfo("Login Status", "Auto-login successful!"))
+
             return True
+
         except Exception as e:
             logger.error(f"Auto-login failed: {e}")
+            if root:
+                from tkinter import messagebox
+                error_msg = f"Auto-login failed:\n{e}"   # capture into a local variable
+                root.after(100, lambda: messagebox.showerror("Login Status", error_msg))
             return False
 
     def get_quotes(self, instrument_tokens, quote_type="ltp"):
