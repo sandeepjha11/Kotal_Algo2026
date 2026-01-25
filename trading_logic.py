@@ -12,12 +12,14 @@ class TradingLogic:
         """Finds the instrument token for a given symbol name from the cash market scrip master."""
         try:
             df = pd.read_csv(scrip_master_url)
-            if symbol_name == "NIFTY 50":
-                instrument = df[df['pSymbolName'] == 'Nifty 50'].iloc[0]
-            elif symbol_name == "BANKNIFTY":
-                instrument = df[df['pSymbol_x'] == 'Nifty Bank'].iloc[0] # Note: Column name might differ
-            else:
-                instrument = df[df['pSymbolName'] == symbol_name].iloc[0]
+            # Standardize the lookup by using a mapping and the correct column name.
+            symbol_map = {
+                "NIFTY": "Nifty 50",
+                "BANKNIFTY": "Nifty Bank"
+            }
+            lookup_name = symbol_map.get(symbol_name, symbol_name)
+
+            instrument = df[df['pSymbolName'] == lookup_name].iloc[0]
             return instrument['pSymbol']
         except Exception as e:
             logger.error(f"Could not find instrument token for {symbol_name}: {e}")
