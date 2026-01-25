@@ -20,29 +20,13 @@ class TradingLogic:
             logger.error(f"Could not find instrument token for {symbol_name}: {e}")
             return None
 
-    def get_atm_strikes(self, symbol, expiry, nfo_scrip_master_url, cm_scrip_master_url):
+    def get_atm_strikes(self, symbol, expiry, spot_price, nfo_scrip_master_url):
         """
-        Calculates the At-The-Money (ATM) strike price for a given symbol
+        Calculates the At-The-Money (ATM) strike price for a given symbol using the provided spot price
         and fetches the full instrument data for the CE and PE options at that strike.
         """
         try:
-            # 1. Get the spot price of the underlying index
-            index_token = self.get_instrument_token(symbol, cm_scrip_master_url)
-            if not index_token:
-                logger.error(f"Could not get token for the index: {symbol}")
-                return None, None
-
-            quotes = self.api_handler.get_quotes(
-                instrument_tokens=[{'instrument_token': index_token, 'exchange_segment': 'nse_cm'}],
-                quote_type='ltp'
-            )
-            if not quotes or 'last_traded_price' not in quotes[0]:
-                logger.error("Could not fetch spot price for ATM calculation.")
-                return None, None
-
-            spot_price = float(quotes[0]['last_traded_price'])
-
-            # 2. Read the NFO scrip master to find the closest strike
+            # 1. Read the NFO scrip master to find the closest strike
             df = pd.read_csv(nfo_scrip_master_url)
             df['pStrikePrice'] = pd.to_numeric(df['pStrikePrice'], errors='coerce')
 

@@ -23,6 +23,7 @@ class TradingApp:
         self.api_handler = APIHandler(self.config)
         self.trading_logic = TradingLogic(self.api_handler)
         self.tick_queue = queue.Queue()
+        self.live_prices = {}
 
         # --- Styles ---
         self.style = ttk.Style()
@@ -112,6 +113,11 @@ class TradingApp:
         try:
             while not self.tick_queue.empty():
                 token, ltp = self.tick_queue.get_nowait()
+
+                # Cache the raw price
+                self.live_prices[token] = ltp
+
+                # Update the UI label
                 if token in self.token_label_map and ltp is not None:
                     try:
                         new_text = f"{float(ltp):.2f}"
@@ -160,14 +166,28 @@ class TradingApp:
         print("[OnClose]:", message)
 
     def update_atm_strikes(self, event=None):
-        """Fetches and updates the ATM strike prices and their LTPs using TradingLogic."""
+        """Fetches and updates the ATM strike prices and their LTPs using the live spot price."""
         symbol = self.symbol_var.get()
         expiry = self.expiry_var.get()
         if not symbol or not expiry:
             return
 
+        # Map the UI symbol to the one used in WebSocket ticks (e.g., "NIFTY" -> "Nifty 50")
+        symbol_map = {
+            "NIFTY": "Nifty 50",
+            "BANKNIFTY": "Nifty Bank"
+        }
+        tick_symbol = symbol_map.get(symbol, symbol)
+
+        # Get the live spot price from our cache
+        spot_price = self.live_prices.get(tick_symbol)
+        if not spot_price:
+            # If the price isn't in the cache yet, reschedule and wait for the next tick
+            self.root.after(1000, self.update_atm_strikes)
+            return
+
         ce_info, pe_info = self.trading_logic.get_atm_strikes(
-            symbol, expiry, self.nfo_scrip_master_url, self.cm_scrip_master_url
+            symbol, expiry, float(spot_price), self.nfo_scrip_master_url
         )
         self.ce_strike_info, self.pe_strike_info = ce_info, pe_info
 
