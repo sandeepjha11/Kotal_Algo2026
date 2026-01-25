@@ -290,16 +290,11 @@ class TradingApp:
             "SENSEX": self.index_vars["SENSEX"]
         }
 
-        # ... rest of your widget creation code ...
-
-
         btn_logs = tk.Button(top_frame, text="logs", bg="#4a4a4a", fg="white", relief="flat")
         btn_logs.pack(side="right", padx=10)
 
         self.clock_label = tk.Label(top_frame, text="", bg="#00b050", fg="black", font=("Arial", 12, "bold"), padx=10)
         self.clock_label.pack(side="right", padx=10)
-
-
 
         # --- Main Frame ---
         main_frame = tk.Frame(self.root, bg="#212121")
@@ -332,8 +327,6 @@ class TradingApp:
         self.update_expiries() # Initial population
         self.combo_expiry.bind("<<ComboboxSelected>>", self.update_atm_strikes)
 
-
-       # inside create_widgets or build_main_ui
         self.margin_var = tk.StringVar(value="0.0")
         self.mtm_var = tk.StringVar(value="0.0")
 

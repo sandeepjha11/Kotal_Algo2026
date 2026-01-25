@@ -20,7 +20,6 @@ class APIHandler:
         try:
             import pyotp
 
-            # Create NeoAPI client
             self.client = NeoAPI(
                 environment='prod',
                 access_token=None,
@@ -28,8 +27,6 @@ class APIHandler:
                 consumer_key=self.kotak_config['consumer_key']
             )
 
-            # Assign callbacks to dummy lambdas or leave them unset here
-            # The TradingApp will override them later
             self.client.on_open = None
             self.client.on_message = None
             self.client.on_error = None
@@ -38,26 +35,20 @@ class APIHandler:
             self.client.on_order_error = None
             self.client.on_order_close = None
 
-            # Perform TOTP login
             payload = self.client.totp_login(
                 mobile_number=self.kotak_config['mobile'],
                 ucc=self.kotak_config['ucc'],
                 totp=pyotp.TOTP(self.kotak_config['totp_key']).now()
             )
 
-            # Save payload for later use (title, etc.)
             self.login_payload = payload
-
-            # Validate with MPIN
             self.client.totp_validate(mpin=self.kotak_config['mpin'])
 
-            # Subscribe to order feed in background
             import threading
             threading.Thread(target=self.client.subscribe_to_orderfeed, daemon=True).start()
 
             logger.info("Auto-login successful and subscribed to order feed.")
 
-            # --- Diagnostic popup ---
             if root:
                 from tkinter import messagebox
                 root.after(100, lambda: messagebox.showinfo("Login Status", "Auto-login successful!"))
@@ -68,7 +59,7 @@ class APIHandler:
             logger.error(f"Auto-login failed: {e}")
             if root:
                 from tkinter import messagebox
-                error_msg = f"Auto-login failed:\n{e}"   # capture into a local variable
+                error_msg = f"Auto-login failed:\n{e}"
                 root.after(100, lambda: messagebox.showerror("Login Status", error_msg))
             return False
 
