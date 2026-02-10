@@ -16,11 +16,12 @@ client = None
 def login():
     global client
     data = request.json
+    ucc = data.get('ucc')
     try:
         client = NeoAPI(environment='prod', consumer_key=data.get('consumer_key'))
-        client.totp_login(mobile_number=data.get('mobile_number'), ucc=data.get('ucc'), totp=pyotp.TOTP(data.get('totp_key')).now())
+        client.totp_login(mobile_number=data.get('mobile_number'), ucc=ucc, totp=pyotp.TOTP(data.get('totp_key')).now())
         client.totp_validate(mpin=data.get('mpin'))
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "ucc": ucc})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 @app.route('/instruments', methods=['GET'])

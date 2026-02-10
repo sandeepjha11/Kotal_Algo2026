@@ -39,6 +39,7 @@ startBridge();
 
 let scheduledJobs = [];
 let entrySummary = null;
+let spotPrices = { NIFTY: '0.00', SENSEX: '0.00' };
 
 // Periodic polling for MTM/Quotes
 setInterval(async () => {
@@ -51,9 +52,14 @@ setInterval(async () => {
                     { instrument_token: peStrike.pSymbol, exchange_segment: 'nse_fo' }
                 ]
             });
-            const quotes = quotesRes.data.data.message;
-            const ceLtp = parseFloat(quotes.find(q => q.instrument_token === ceStrike.pSymbol).last_traded_price);
-            const peLtp = parseFloat(quotes.find(q => q.instrument_token === peStrike.pSymbol).last_traded_price);
+            const quotes = quotesRes.data.data.message || [];
+            const ceQuote = quotes.find(q => q.instrument_token === ceStrike.pSymbol);
+            const peQuote = quotes.find(q => q.instrument_token === peStrike.pSymbol);
+
+            if (!ceQuote || !peQuote) return;
+
+            const ceLtp = parseFloat(ceQuote.last_traded_price);
+            const peLtp = parseFloat(peQuote.last_traded_price);
 
             // Calculate MTM
             const mtm = ((ceEntry - ceLtp) + (peEntry - peLtp)) * quantity;
@@ -63,8 +69,26 @@ setInterval(async () => {
 
             io.emit('entry-summary', entrySummary);
         } catch (error) {
-            console.error('Polling error:', error.message);
+            console.error('Polling error (MTM):', error.message);
         }
+    }
+
+    // Also poll NIFTY and SENSEX spot prices for the header
+    try {
+        const [niftyRes, sensexRes] = await Promise.all([
+            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'NIFTY' } }).catch(() => null),
+            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'SENSEX' } }).catch(() => null)
+        ]);
+
+        if (niftyRes?.data?.quote?.message?.[0]) {
+            spotPrices.NIFTY = parseFloat(niftyRes.data.quote.message[0].last_traded_price).toFixed(2);
+        }
+        if (sensexRes?.data?.quote?.message?.[0]) {
+            spotPrices.SENSEX = parseFloat(sensexRes.data.quote.message[0].last_traded_price).toFixed(2);
+        }
+        io.emit('spot-prices', spotPrices);
+    } catch (error) {
+        console.error('Polling error (Spots):', error.message);
     }
 }, 5000); // Every 5 seconds
 

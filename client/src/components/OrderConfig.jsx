@@ -59,7 +59,7 @@ const OrderConfig = () => {
       )}
       <div className="space-y-2"><label className="text-xs text-gray-400 uppercase tracking-wider font-bold flex items-center gap-2"><Zap size={14} className="text-primary" /> Underlying Index</label>
         <select value={underlying} onChange={(e) => setUnderlying(e.target.value)} className="w-full p-3 bg-dark-card border border-dark-border rounded-lg outline-none focus:border-primary appearance-none cursor-pointer">
-          <option value="NIFTY">NIFTY - NIFTY (Lot: 65)</option><option value="SENSEX">SENSEX - SENSEX (Lot: 10)</option>
+          <option value="NIFTY">NIFTY - NIFTY (Lot: 65)</option><option value="SENSEX">SENSEX - SENSEX (Lot: 20)</option>
         </select>
       </div>
       <div className="space-y-2"><label className="text-xs text-gray-400 uppercase tracking-wider font-bold">Expiry Date</label>

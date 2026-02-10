@@ -9,8 +9,11 @@ const Login = ({ onLoginSuccess }) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
       const response = await axios.post('http://localhost:5000/api/login', formData);
-      if (response.data.status === 'success') onLoginSuccess();
-      else setError(response.data.message);
+      if (response.data.status === 'success') {
+        onLoginSuccess(response.data.ucc);
+      } else {
+        setError(response.data.message);
+      }
     } catch (err) { setError(err.response?.data?.message || 'Login failed'); }
     finally { setLoading(false); }
   };
