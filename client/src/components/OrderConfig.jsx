@@ -19,16 +19,23 @@ const OrderConfig = () => {
       if (response.data.expiries.length > 0) setSelectedExpiry(response.data.expiries[0]);
     } catch (err) { console.error("Failed to fetch expiries"); }
   };
+  const [error, setError] = useState('');
   const handleExecute = async () => {
     setLoading(true);
+    setError('');
     try {
       await axios.post('http://localhost:5000/api/execute-strategy', { strategy, underlying, expiry: selectedExpiry, lots, targetPremium, percentageOTM, stopLoss });
       alert('Strategy execution started!');
-    } catch (err) { alert('Execution failed: ' + (err.response?.data?.message || err.message)); }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      setError(msg);
+      alert('Execution failed: ' + msg);
+    }
     finally { setLoading(false); }
   };
   return (
     <div className="space-y-8">
+      {error && <div className="p-3 bg-red-900/20 border border-red-500/50 text-red-500 rounded-lg text-xs italic">{error}</div>}
       <div className="space-y-3"><label className="text-xs text-gray-400 uppercase tracking-wider font-bold flex items-center gap-2"><Target size={14} className="text-primary" /> Strategy</label>
         <div className="space-y-2">
           {['Short Straddle', 'Premium Based', 'Spot Based Strangle'].map((s) => (

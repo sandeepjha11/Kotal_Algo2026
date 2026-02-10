@@ -1,6 +1,9 @@
 const axios = require('axios');
 async function executeShortStraddle(bridgeUrl, { underlying, expiry, lots, stopLoss }) {
     const spotRes = await axios.get(`${bridgeUrl}/spot`, { params: { symbol: underlying } });
+    if (spotRes.data.status !== 'success' || !spotRes.data.quote?.message?.[0]) {
+        throw new Error(spotRes.data.message || "Failed to fetch spot price");
+    }
     const spotPrice = parseFloat(spotRes.data.quote.message[0].last_traded_price);
     const strikesRes = await axios.get(`${bridgeUrl}/strikes`, { params: { symbol: underlying, expiry } });
     const strikes = strikesRes.data.strikes;
@@ -48,6 +51,9 @@ async function executePremiumBasedStrangle(bridgeUrl, { underlying, expiry, lots
     const strikes = strikesRes.data.strikes;
     const tokens = strikes.map(s => ({ instrument_token: s.pSymbol, exchange_segment: 'nse_fo' }));
     const quotesRes = await axios.post(`${bridgeUrl}/quotes`, { tokens });
+    if (quotesRes.data.status !== 'success' || !quotesRes.data.data?.message) {
+        throw new Error(quotesRes.data.message || "Failed to fetch quotes for strikes");
+    }
     const quotes = quotesRes.data.data.message;
     let bestCE = null, bestPE = null, minCEDiff = Infinity, minPEDiff = Infinity;
     quotes.forEach(q => {
@@ -85,6 +91,9 @@ async function executePremiumBasedStrangle(bridgeUrl, { underlying, expiry, lots
 }
 async function executeSpotBasedStrangle(bridgeUrl, { underlying, expiry, lots, percentageOTM, stopLoss }) {
     const spotRes = await axios.get(`${bridgeUrl}/spot`, { params: { symbol: underlying } });
+    if (spotRes.data.status !== 'success' || !spotRes.data.quote?.message?.[0]) {
+        throw new Error(spotRes.data.message || "Failed to fetch spot price");
+    }
     const spotPrice = parseFloat(spotRes.data.quote.message[0].last_traded_price);
     const ceStrikePrice = spotPrice * (1 + percentageOTM / 100);
     const peStrikePrice = spotPrice * (1 - percentageOTM / 100);

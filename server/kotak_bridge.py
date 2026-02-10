@@ -65,12 +65,36 @@ def place_order():
 def get_spot():
     global client
     symbol = request.args.get('symbol', 'NIFTY')
-    cash_url = client.scrip_master(exchange_segment="NSE")
-    df = pd.read_csv(cash_url)
-    df.columns = [c.strip() for c in df.columns.values.tolist()]
-    spot_info = df[df.pSymbolName == symbol].iloc[0]
-    token = spot_info['pSymbol']
-    quote = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_cm"}], quote_type="")
-    return jsonify({"status": "success", "symbol": symbol, "quote": quote})
+    try:
+        cash_url = client.scrip_master(exchange_segment="NSE")
+        df = pd.read_csv(cash_url)
+        df.columns = [c.strip() for c in df.columns.values.tolist()]
+
+        # Mappings for spot symbols in cash segment
+        mapping = {
+            'NIFTY': 'Nifty 50',
+            'SENSEX': 'SENSEX'
+        }
+        search_symbol = mapping.get(symbol, symbol)
+
+        filtered = df[df.pSymbolName == search_symbol]
+        if filtered.empty:
+            # Try original symbol if mapping fails
+            filtered = df[df.pSymbolName == symbol]
+
+        if filtered.empty:
+            return jsonify({"status": "error", "message": f"Spot symbol {symbol} not found in scrip master"}), 404
+
+        spot_info = filtered.iloc[0]
+        token = spot_info['pSymbol']
+        quote = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_cm"}], quote_type="")
+
+        if quote.get('stat') != 'Ok':
+            return jsonify({"status": "error", "message": quote.get('emsg', 'Failed to fetch quote')}), 400
+
+        return jsonify({"status": "success", "symbol": symbol, "quote": quote})
+    except Exception as e:
+        logger.error(f"Error in get_spot: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
