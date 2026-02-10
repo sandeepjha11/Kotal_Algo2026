@@ -1,5 +1,6 @@
 const axios = require('axios');
 async function executeShortStraddle(bridgeUrl, { underlying, expiry, lots, stopLoss }) {
+    console.log(`Executing Short Straddle for ${underlying}, Expiry: ${expiry}, Lots: ${lots}`);
     const spotRes = await axios.get(`${bridgeUrl}/spot`, { params: { symbol: underlying } });
     if (spotRes.data.status !== 'success' || !spotRes.data.quote?.message?.[0]) {
         throw new Error(spotRes.data.message || "Failed to fetch spot price");
@@ -11,7 +12,7 @@ async function executeShortStraddle(bridgeUrl, { underlying, expiry, lots, stopL
     const ceStrike = strikes.find(s => parseFloat(s.pStrikePrice) === atmStrikeValue && s.pOptionType === 'CE');
     const peStrike = strikes.find(s => parseFloat(s.pStrikePrice) === atmStrikeValue && s.pOptionType === 'PE');
     if (!ceStrike || !peStrike) throw new Error("ATM Strikes not found");
-    const lotSize = parseInt(ceStrike.pLotSize) || (underlying === 'NIFTY' ? 25 : 10);
+    const lotSize = parseInt(ceStrike.pLotSize) || (underlying === 'NIFTY' ? 65 : 10);
     const quantity = lots * lotSize;
     const ceOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: ceStrike.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });
     const peOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: peStrike.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });
@@ -47,6 +48,7 @@ async function executeShortStraddle(bridgeUrl, { underlying, expiry, lots, stopL
     };
 }
 async function executePremiumBasedStrangle(bridgeUrl, { underlying, expiry, lots, targetPremium, stopLoss }) {
+    console.log(`Executing Premium Based Strangle for ${underlying}, Expiry: ${expiry}, Target: ${targetPremium}`);
     const strikesRes = await axios.get(`${bridgeUrl}/strikes`, { params: { symbol: underlying, expiry } });
     const strikes = strikesRes.data.strikes;
     const tokens = strikes.map(s => ({ instrument_token: s.pSymbol, exchange_segment: 'nse_fo' }));
@@ -64,7 +66,7 @@ async function executePremiumBasedStrangle(bridgeUrl, { underlying, expiry, lots
         else { if (diff < minPEDiff) { minPEDiff = diff; bestPE = { ...strikeInfo, ltp }; } }
     });
     if (!bestCE || !bestPE) throw new Error("Could not find suitable strikes for target premium");
-    const lotSize = parseInt(bestCE.pLotSize) || (underlying === 'NIFTY' ? 25 : 10);
+    const lotSize = parseInt(bestCE.pLotSize) || (underlying === 'NIFTY' ? 65 : 10);
     const quantity = lots * lotSize;
     const ceOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: bestCE.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });
     const peOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: bestPE.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });
@@ -90,6 +92,7 @@ async function executePremiumBasedStrangle(bridgeUrl, { underlying, expiry, lots
     };
 }
 async function executeSpotBasedStrangle(bridgeUrl, { underlying, expiry, lots, percentageOTM, stopLoss }) {
+    console.log(`Executing Spot Based Strangle for ${underlying}, Expiry: ${expiry}, OTM%: ${percentageOTM}`);
     const spotRes = await axios.get(`${bridgeUrl}/spot`, { params: { symbol: underlying } });
     if (spotRes.data.status !== 'success' || !spotRes.data.quote?.message?.[0]) {
         throw new Error(spotRes.data.message || "Failed to fetch spot price");
@@ -101,7 +104,7 @@ async function executeSpotBasedStrangle(bridgeUrl, { underlying, expiry, lots, p
     const strikes = strikesRes.data.strikes;
     const ceStrike = strikes.filter(s => s.pOptionType === 'CE').reduce((prev, curr) => Math.abs(parseFloat(curr.pStrikePrice) - ceStrikePrice) < Math.abs(parseFloat(prev.pStrikePrice) - ceStrikePrice) ? curr : prev);
     const peStrike = strikes.filter(s => s.pOptionType === 'PE').reduce((prev, curr) => Math.abs(parseFloat(curr.pStrikePrice) - peStrikePrice) < Math.abs(parseFloat(prev.pStrikePrice) - peStrikePrice) ? curr : prev);
-    const lotSize = parseInt(ceStrike.pLotSize) || (underlying === 'NIFTY' ? 25 : 10);
+    const lotSize = parseInt(ceStrike.pLotSize) || (underlying === 'NIFTY' ? 65 : 10);
     const quantity = lots * lotSize;
     const ceOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: ceStrike.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });
     const peOrder = await axios.post(`${bridgeUrl}/place_order`, { trading_symbol: peStrike.pTrdSymbol, transaction_type: 'S', quantity, order_type: 'MKT' });

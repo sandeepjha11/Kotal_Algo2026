@@ -119,7 +119,12 @@ app.post('/api/execute-strategy', async (req, res) => {
         io.emit('entry-summary', entrySummary);
         res.json({ status: 'success', data: result });
     } catch (error) {
-        res.status(500).json({ status: 'error', message: error.message });
+        console.error('Strategy Execution Error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
