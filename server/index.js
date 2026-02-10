@@ -94,9 +94,12 @@ setInterval(async () => {
 
 app.post('/api/login', async (req, res) => {
     try {
+        console.log(`Forwarding login request to bridge for UCC: ${req.body.ucc}`);
         const response = await axios.post(`${BRIDGE_URL}/login`, req.body);
+        console.log(`Bridge login response:`, response.data);
         res.json(response.data);
     } catch (error) {
+        console.error('Login error forwarding:', error.message);
         res.status(error.response?.status || 500).json(error.response?.data || { message: error.message });
     }
 });
@@ -190,8 +193,10 @@ app.get('/api/scheduled-jobs', (req, res) => res.json(scheduledJobs));
 app.get('/api/entry-summary', (req, res) => res.json(entrySummary));
 
 io.on('connection', (socket) => {
+    console.log('New client connected');
     socket.emit('scheduled-jobs', scheduledJobs);
     socket.emit('entry-summary', entrySummary);
+    socket.emit('spot-prices', spotPrices);
 });
 
 const PORT = process.env.PORT || 5000;

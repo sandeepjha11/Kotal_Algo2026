@@ -22,6 +22,7 @@ function App() {
     });
 
     socket.on('spot-prices', (prices) => {
+      console.log('Received spot prices:', prices);
       setSpotPrices(prices);
     });
 
@@ -34,6 +35,7 @@ function App() {
 
   if (!isLoggedIn) {
     return <Login onLoginSuccess={(userUcc) => {
+      console.log('Login successful, UCC:', userUcc);
       setUcc(userUcc);
       setIsLoggedIn(true);
     }} />;

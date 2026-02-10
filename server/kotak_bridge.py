@@ -17,12 +17,15 @@ def login():
     global client
     data = request.json
     ucc = data.get('ucc')
+    logger.info(f"Login attempt for UCC: {ucc}")
     try:
         client = NeoAPI(environment='prod', consumer_key=data.get('consumer_key'))
         client.totp_login(mobile_number=data.get('mobile_number'), ucc=ucc, totp=pyotp.TOTP(data.get('totp_key')).now())
         client.totp_validate(mpin=data.get('mpin'))
+        logger.info(f"Login successful for UCC: {ucc}")
         return jsonify({"status": "success", "ucc": ucc})
     except Exception as e:
+        logger.error(f"Login failed for UCC {ucc}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 400
 @app.route('/instruments', methods=['GET'])
 def get_instruments():
@@ -74,6 +77,7 @@ def place_order():
 def get_spot():
     global client
     if not client:
+        logger.warning("Spot request failed: Not logged in")
         return jsonify({"status": "error", "message": "Not logged in"}), 401
     symbol = request.args.get('symbol', 'NIFTY')
     try:

@@ -16,18 +16,22 @@ const Header = ({ ucc, spotPrices }) => {
 
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-3 px-4 py-2 bg-dark-card/50 border border-dark-border rounded-lg">
-          <Activity size={16} className="text-green-500" />
+          <Activity size={16} className={spotPrices.NIFTY === '0.00' ? "text-gray-600 animate-pulse" : "text-green-500"} />
           <div>
             <div className="text-[8px] text-gray-500 uppercase font-bold">NIFTY 50</div>
-            <div className="text-sm font-mono font-bold tracking-tight">₹{spotPrices.NIFTY}</div>
+            <div className={`text-sm font-mono font-bold tracking-tight ${spotPrices.NIFTY === '0.00' ? 'text-gray-600' : ''}`}>
+              {spotPrices.NIFTY === '0.00' ? 'Loading...' : `₹${spotPrices.NIFTY}`}
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3 px-4 py-2 bg-dark-card/50 border border-dark-border rounded-lg">
-          <Activity size={16} className="text-primary" />
+          <Activity size={16} className={spotPrices.SENSEX === '0.00' ? "text-gray-600 animate-pulse" : "text-primary"} />
           <div>
             <div className="text-[8px] text-gray-500 uppercase font-bold">SENSEX</div>
-            <div className="text-sm font-mono font-bold tracking-tight">₹{spotPrices.SENSEX}</div>
+            <div className={`text-sm font-mono font-bold tracking-tight ${spotPrices.SENSEX === '0.00' ? 'text-gray-600' : ''}`}>
+              {spotPrices.SENSEX === '0.00' ? 'Loading...' : `₹${spotPrices.SENSEX}`}
+            </div>
           </div>
         </div>
       </div>
