@@ -7,7 +7,7 @@ const socket = io('http://localhost:5000');
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [ucc, setUcc] = useState('');
+  const [ucc, setUcc] = useState(localStorage.getItem('kotak_ucc') || '');
   const [scheduledJobs, setScheduledJobs] = useState([]);
   const [entrySummary, setEntrySummary] = useState(null);
   const [spotPrices, setSpotPrices] = useState({ NIFTY: '0.00', SENSEX: '0.00' });
@@ -36,7 +36,8 @@ function App() {
   if (!isLoggedIn) {
     return <Login onLoginSuccess={(userUcc) => {
       console.log('Login successful, UCC:', userUcc);
-      setUcc(userUcc);
+      if (userUcc) localStorage.setItem('kotak_ucc', userUcc);
+      setUcc(userUcc || '');
       setIsLoggedIn(true);
     }} />;
   }

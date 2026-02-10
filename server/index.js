@@ -28,8 +28,22 @@ function startBridge() {
     bridgeProcess = spawn('python', [path.join(__dirname, 'kotak_bridge.py')], {
         env: { ...process.env, KOTAK_BRIDGE_PORT: process.env.KOTAK_BRIDGE_PORT || 5001 }
     });
-    bridgeProcess.stdout.on('data', (data) => console.log(`Bridge: ${data}`));
-    bridgeProcess.stderr.on('data', (data) => console.error(`Bridge Error: ${data}`));
+    bridgeProcess.stdout.on('data', (data) => {
+        const str = data.toString();
+        if (str.includes('INFO') || str.includes('200')) {
+            console.log(`Bridge: ${str.trim()}`);
+        } else {
+            console.error(`Bridge Log: ${str.trim()}`);
+        }
+    });
+    bridgeProcess.stderr.on('data', (data) => {
+        const str = data.toString();
+        if (str.includes('INFO') || str.includes('200')) {
+            console.log(`Bridge: ${str.trim()}`);
+        } else {
+            console.error(`Bridge Error: ${str.trim()}`);
+        }
+    });
     bridgeProcess.on('close', (code) => {
         console.log(`Bridge process exited with code ${code}. Restarting...`);
         setTimeout(startBridge, 5000);
@@ -76,19 +90,31 @@ setInterval(async () => {
     // Also poll NIFTY and SENSEX spot prices for the header
     try {
         const [niftyRes, sensexRes] = await Promise.all([
-            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'NIFTY' } }).catch(() => null),
-            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'SENSEX' } }).catch(() => null)
+            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'NIFTY' } }).catch(e => {
+                console.error('NIFTY Spot fetch failed:', e.message);
+                return null;
+            }),
+            axios.get(`${BRIDGE_URL}/spot`, { params: { symbol: 'SENSEX' } }).catch(e => {
+                console.error('SENSEX Spot fetch failed:', e.message);
+                return null;
+            })
         ]);
 
         if (niftyRes?.data?.quote?.message?.[0]) {
             spotPrices.NIFTY = parseFloat(niftyRes.data.quote.message[0].last_traded_price).toFixed(2);
+        } else if (niftyRes?.data) {
+            console.warn('NIFTY Spot response missing data:', niftyRes.data);
         }
+
         if (sensexRes?.data?.quote?.message?.[0]) {
             spotPrices.SENSEX = parseFloat(sensexRes.data.quote.message[0].last_traded_price).toFixed(2);
+        } else if (sensexRes?.data) {
+            console.warn('SENSEX Spot response missing data:', sensexRes.data);
         }
+
         io.emit('spot-prices', spotPrices);
     } catch (error) {
-        console.error('Polling error (Spots):', error.message);
+        console.error('Critical polling error (Spots):', error.message);
     }
 }, 5000); // Every 5 seconds
 
